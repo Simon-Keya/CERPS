@@ -1,0 +1,76 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15
+    container_name: cerps_postgres
+    restart: always
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: cerps_db
+      POSTGRES_USER: cerps_user
+      POSTGRES_PASSWORD: cerps_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/postgres-init.sql
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    container_name: cerps_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: cerps_backend
+    command: bash -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/usr/src/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    environment:
+      DEBUG: "True"
+      POSTGRES_DB: cerps_db
+      POSTGRES_USER: cerps_user
+      POSTGRES_PASSWORD: cerps_pass
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DJANGO_SECRET_KEY: "your-secret-key"
+
+  celery:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: cerps_celery
+    command: celery -A cerps worker -l info
+    volumes:
+      - .:/usr/src/app
+    depends_on:
+      - db
+      - redis
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: cerps_celery_beat
+    command: celery -A cerps beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/usr/src/app
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  postgres_data:
+  redis_data:
