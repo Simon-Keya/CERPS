@@ -1,16 +1,22 @@
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from .models import FeeStructure, Invoice, Payment
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from .models import College, Department
+from .serializers import CollegeSerializer, DepartmentSerializer
+from .permissions import IsAdminOrReadOnly
 
-User = get_user_model()
+class CollegeViewSet(viewsets.ModelViewSet):
+    queryset = College.objects.all()
+    serializer_class = CollegeSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
-class FinanceModelsTestCase(TestCase):
-    def setUp(self):
-        self.student = User.objects.create_user(username='teststudent', password='pass1234')
-        self.fee_structure = FeeStructure.objects.create(program='CS', academic_year='2025', amount=50000)
-        self.invoice = Invoice.objects.create(student=self.student, due_date='2025-12-31', total_amount=50000)
-        self.payment = Payment.objects.create(invoice=self.invoice, amount=25000, method='cash')
+class DepartmentViewSet(viewsets.ModelViewSet):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
-    def test_invoice_balance(self):
-        self.assertEqual(self.invoice.total_amount, 50000)
-        self.assertEqual(self.invoice.payments.first().amount, 25000)
+    @action(detail=False, methods=['get'])
+    def names(self, request):
+        """Return list of department names"""
+        names = Department.objects.values_list('name', flat=True)
+        return Response(names)

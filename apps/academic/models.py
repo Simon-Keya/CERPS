@@ -1,24 +1,31 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
+from apps.core.models import College, Department
 
-class Department(models.Model):
-    name = models.CharField(max_length=100)
-    code = models.CharField(max_length=10, unique=True)
-    head = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='headed_departments'
-    )
+
+class Program(models.Model):
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name="programs")
+    name = models.CharField(max_length=255)
+    code = models.CharField(max_length=20, unique=True)
+    description = models.TextField(blank=True, null=True)
+    credits = models.PositiveIntegerField(default=120)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return self.name
+        return f"{self.code} - {self.name}"
+
 
 class Course(models.Model):
-    title = models.CharField(max_length=200)
-    code = models.CharField(max_length=10, unique=True)
-    department = models.ForeignKey(Department, on_delete=models.CASCADE)
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name="courses")
+    title = models.CharField(max_length=255)
+    code = models.CharField(max_length=20, unique=True)
     credits = models.IntegerField()
+    description = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.code} - {self.title}"
+
 
 class Subject(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
@@ -28,12 +35,14 @@ class Subject(models.Model):
     def __str__(self):
         return self.name
 
+
 class Instructor(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.user.get_full_name()}"
+        return self.user.full_name or str(self.user)
+
 
 class TeachingAssignment(models.Model):
     instructor = models.ForeignKey(Instructor, on_delete=models.CASCADE)
@@ -47,12 +56,14 @@ class TeachingAssignment(models.Model):
     def __str__(self):
         return f"{self.instructor} -> {self.subject}"
 
+
 class Timetable(models.Model):
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
-    day_of_week = models.CharField(max_length=10)  # e.g., Monday
+    day_of_week = models.CharField(max_length=10)
     start_time = models.TimeField()
     end_time = models.TimeField()
     room = models.CharField(max_length=50)
+
 
 class Grade(models.Model):
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -63,3 +74,16 @@ class Grade(models.Model):
 
     class Meta:
         unique_together = ('student', 'subject', 'semester', 'academic_year')
+
+
+class Student(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="student_profile")
+    admission_number = models.CharField(max_length=20, unique=True)
+    college = models.ForeignKey(College, on_delete=models.CASCADE, related_name="students")
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name="students")
+    programs = models.ManyToManyField(Program, blank=True, related_name="enrolled_students")
+    enrollment_date = models.DateField(default=timezone.now)
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.user} ({self.admission_number})"

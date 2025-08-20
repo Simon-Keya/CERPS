@@ -5,6 +5,4 @@ class AdmissionsConfig(AppConfig):
     name = "apps.admissions"
     verbose_name = "Admissions"
 
-    def ready(self):
-        # Import signals if you later add them.
-        from . import signals  # noqa
+    

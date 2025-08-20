@@ -14,5 +14,5 @@ class RoomAdmin(admin.ModelAdmin):
 @admin.register(HostelMember)
 class HostelMemberAdmin(admin.ModelAdmin):
     list_display = ('student', 'room', 'check_in', 'check_out', 'is_active')
-    search_fields = ('student__login_id',)
+    search_fields = ('student__username',)
     readonly_fields = ('is_active',)

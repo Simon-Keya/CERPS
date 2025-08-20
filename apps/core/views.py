@@ -1,31 +1,22 @@
-from rest_framework import viewsets, permissions
-from .models import Department, AcademicYear, Program, GradingScale, CollegeConfig
-from .serializers import (
-    DepartmentSerializer, AcademicYearSerializer, ProgramSerializer,
-    GradingScaleSerializer, CollegeConfigSerializer
-)
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from .models import College, Department
+from .serializers import CollegeSerializer, DepartmentSerializer
+from .permissions import IsAdminOrReadOnly
+
+class CollegeViewSet(viewsets.ModelViewSet):
+    queryset = College.objects.all()
+    serializer_class = CollegeSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
-class AcademicYearViewSet(viewsets.ModelViewSet):
-    queryset = AcademicYear.objects.all()
-    serializer_class = AcademicYearSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-class ProgramViewSet(viewsets.ModelViewSet):
-    queryset = Program.objects.all()
-    serializer_class = ProgramSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-class GradingScaleViewSet(viewsets.ModelViewSet):
-    queryset = GradingScale.objects.all()
-    serializer_class = GradingScaleSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-class CollegeConfigViewSet(viewsets.ModelViewSet):
-    queryset = CollegeConfig.objects.all()
-    serializer_class = CollegeConfigSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    @action(detail=False, methods=['get'])
+    def names(self, request):
+        """Return list of department names"""
+        names = Department.objects.values_list('name', flat=True)
+        return Response(names)

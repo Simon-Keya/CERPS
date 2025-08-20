@@ -1,65 +1,55 @@
 from django.db import models
-from django.conf import settings
+from django.utils import timezone
+from apps.users.models import User
+from apps.academic.models import Student
 
-class Department(models.Model):
-    name = models.CharField(max_length=100)
-    code = models.CharField(max_length=10, unique=True)
-    head = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='headed_departments'
-    )
-
-    def __str__(self):
-        return self.name
-
-class Course(models.Model):
-    title = models.CharField(max_length=200)
-    code = models.CharField(max_length=10, unique=True)
-    department = models.ForeignKey(Department, on_delete=models.CASCADE)
-    credits = models.IntegerField()
-
-    def __str__(self):
-        return f"{self.code} - {self.title}"
-
-class Subject(models.Model):
-    course = models.ForeignKey(Course, on_delete=models.CASCADE)
-    name = models.CharField(max_length=200)
-    subject_code = models.CharField(max_length=10, unique=True)
-
-    def __str__(self):
-        return self.name
-
-class Instructor(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
-
-    def __str__(self):
-        return f"{self.user.get_full_name()}"
-
-class TeachingAssignment(models.Model):
-    instructor = models.ForeignKey(Instructor, on_delete=models.CASCADE)
-    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
-    semester = models.CharField(max_length=20)
-    academic_year = models.CharField(max_length=9)
+class Ledger(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='ledgers')
+    balance_cents = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('instructor', 'subject', 'semester', 'academic_year')
+        verbose_name = 'Ledger'
+        verbose_name_plural = 'Ledgers'
 
     def __str__(self):
-        return f"{self.instructor} -> {self.subject}"
+        return f"Ledger for {self.student} - Balance: {self.balance_cents / 100:.2f}"
 
-class Timetable(models.Model):
-    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
-    day_of_week = models.CharField(max_length=10)  # e.g., Monday
-    start_time = models.TimeField()
-    end_time = models.TimeField()
-    room = models.CharField(max_length=50)
-
-class Grade(models.Model):
-    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
-    grade = models.CharField(max_length=2)
-    semester = models.CharField(max_length=20)
-    academic_year = models.CharField(max_length=9)
+class Invoice(models.Model):
+    ledger = models.ForeignKey(Ledger, on_delete=models.CASCADE, related_name='invoices')
+    amount_cents = models.PositiveIntegerField()
+    description = models.TextField(blank=True)
+    due_date = models.DateField()
+    status = models.CharField(max_length=20, choices=[
+        ('pending', 'Pending'),
+        ('paid', 'Paid'),
+        ('overdue', 'Overdue'),
+    ], default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('student', 'subject', 'semester', 'academic_year')
+        verbose_name = 'Invoice'
+        verbose_name_plural = 'Invoices'
+
+    def __str__(self):
+        return f"Invoice {self.id} - {self.ledger.student} - {self.amount_cents / 100:.2f}"
+
+class Payment(models.Model):
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='payments')
+    amount_cents = models.PositiveIntegerField()
+    payment_method = models.CharField(max_length=50, choices=[
+        ('cash', 'Cash'),
+        ('card', 'Card'),
+        ('bank_transfer', 'Bank Transfer'),
+    ])
+    paid_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Payment'
+        verbose_name_plural = 'Payments'
+
+    def __str__(self):
+        return f"Payment {self.id} - {self.invoice} - {self.amount_cents / 100:.2f}"

@@ -1,53 +1,45 @@
 from django.db import models
+from django.conf import settings
+from django.utils import timezone
+
+
+class College(models.Model):
+    name = models.CharField(max_length=255)
+    address = models.TextField()
+    email = models.EmailField()
+    phone_number = models.CharField(max_length=20)
+    established = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "College"
+        verbose_name_plural = "Colleges"
+
+    def __str__(self):
+        return self.name
+
 
 class Department(models.Model):
-    name = models.CharField(max_length=255, unique=True)
+    college = models.ForeignKey(College, on_delete=models.CASCADE, related_name="departments")
+    name = models.CharField(max_length=100)
     code = models.CharField(max_length=10, unique=True)
-    description = models.TextField(blank=True)
+    head = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='headed_departments'
+    )
+
+    class Meta:
+        verbose_name = "Department"
+        verbose_name_plural = "Departments"
 
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.code})"
 
 
-class AcademicYear(models.Model):
-    name = models.CharField(max_length=50, unique=True)  # e.g. "2025/2026"
-    start_date = models.DateField()
-    end_date = models.DateField()
-    is_current = models.BooleanField(default=False)
-
-    def __str__(self):
-        return self.name
-
-
-class Program(models.Model):
-    name = models.CharField(max_length=255)
-    code = models.CharField(max_length=20, unique=True)
-    department = models.ForeignKey(Department, on_delete=models.CASCADE)
-    duration_years = models.PositiveIntegerField()
+class AuditLog(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='audit_logs')
+    action = models.TextField()
+    timestamp = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return self.name
-
-
-class GradingScale(models.Model):
-    grade = models.CharField(max_length=2)
-    min_score = models.DecimalField(max_digits=5, decimal_places=2)
-    max_score = models.DecimalField(max_digits=5, decimal_places=2)
-    remark = models.CharField(max_length=255)
-
-    def __str__(self):
-        return f"{self.grade} ({self.min_score}-{self.max_score})"
-
-
-class CollegeConfig(models.Model):
-    name = models.CharField(max_length=255)
-    motto = models.CharField(max_length=255, blank=True)
-    established = models.DateField(null=True, blank=True)
-    email = models.EmailField()
-    phone = models.CharField(max_length=30)
-    website = models.URLField(blank=True)
-    address = models.TextField()
-    logo = models.ImageField(upload_to='logos/', null=True, blank=True)
-
-    def __str__(self):
-        return self.name
+        return f"{self.user} - {self.action} @ {self.timestamp}"

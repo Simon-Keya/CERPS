@@ -1,8 +1,7 @@
 from django.db import models
-from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.conf import settings
 
-User = get_user_model()
 
 class Book(models.Model):
     isbn = models.CharField(max_length=20, unique=True)
@@ -13,16 +12,27 @@ class Book(models.Model):
     copies_total = models.PositiveIntegerField(default=1)
     copies_available = models.PositiveIntegerField(default=1)
 
+    class Meta:
+        ordering = ['title']
+        verbose_name = "Book"
+        verbose_name_plural = "Books"
+
     def __str__(self):
         return f"{self.title} ({self.isbn})"
 
+
 class LibraryMember(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     joined_date = models.DateField(default=timezone.now)
     membership_active = models.BooleanField(default=True)
 
+    class Meta:
+        verbose_name = "Library Member"
+        verbose_name_plural = "Library Members"
+
     def __str__(self):
         return f"{self.user.login_id} - Library Member"
+
 
 class BorrowRecord(models.Model):
     member = models.ForeignKey(LibraryMember, on_delete=models.CASCADE, related_name='borrow_records')
@@ -32,7 +42,10 @@ class BorrowRecord(models.Model):
     returned_on = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        unique_together = ('member', 'book', 'borrowed_on')
+     unique_together = ('member', 'book', 'borrowed_on')
+     ordering = ['-borrowed_on']
+     verbose_name = "Borrow Record"
+     verbose_name_plural = "Borrow Records"
 
     @property
     def is_overdue(self):

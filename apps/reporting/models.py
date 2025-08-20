@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings
-from apps.core.models import Student, Course
-from apps.finance.models import PaymentTransaction
+from apps.academic.models import Student, Course
+from apps.finance.models import Payment
 
 class KPI(models.Model):
     """

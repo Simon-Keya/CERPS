@@ -1,7 +1,6 @@
-from rest_framework import permissions
+from rest_framework.permissions import BasePermission
 
-class IsFinanceOrReadOnly(permissions.BasePermission):
+class IsFinanceAdmin(BasePermission):
+    """Allow only staff to access finance endpoints"""
     def has_permission(self, request, view):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return request.user.groups.filter(name='Finance').exists()
+        return request.user.is_staff

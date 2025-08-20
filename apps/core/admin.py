@@ -1,8 +1,9 @@
 from django.contrib import admin
-from .models import Department, AcademicYear, Program, GradingScale, CollegeConfig
+from .models import AuditLog
 
-admin.site.register(Department)
-admin.site.register(AcademicYear)
-admin.site.register(Program)
-admin.site.register(GradingScale)
-admin.site.register(CollegeConfig)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ('user', 'action', 'timestamp')
+    search_fields = ('action', 'user__username')
+    list_filter = ('timestamp',)
+
+admin.site.register(AuditLog, AuditLogAdmin)
