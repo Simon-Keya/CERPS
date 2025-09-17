@@ -1,5 +1,5 @@
 from django.test import TestCase
-from apps.core.models import Student, Course
+from apps.academic.models import Student, Course
 from .models import KPI, StudentPerformance, AuditLog
 
 class ReportingTestCase(TestCase):

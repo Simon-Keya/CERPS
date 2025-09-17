@@ -1,89 +1,141 @@
 from django.db import models
-from django.conf import settings
 from django.utils import timezone
-from apps.core.models import College, Department
+from apps.hr.models import Department
+from apps.users.models import User
+from apps.core.models import College
+
+
+class AcademicYear(models.Model):
+    """Represents an academic year, e.g. 2024/2025."""
+    name = models.CharField(max_length=20, unique=True)  # Example: "2024/2025"
+    start_date = models.DateField()
+    end_date = models.DateField()
+    is_current = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Academic Year"
+        verbose_name_plural = "Academic Years"
+        ordering = ["-start_date"]
+
+    def __str__(self):
+        return self.name
 
 
 class Program(models.Model):
-    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name="programs")
-    name = models.CharField(max_length=255)
-    code = models.CharField(max_length=20, unique=True)
-    description = models.TextField(blank=True, null=True)
-    credits = models.PositiveIntegerField(default=120)
-    created_at = models.DateTimeField(auto_now_add=True)
+    name = models.CharField(max_length=100)
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='programs')
+    college = models.ForeignKey(College, on_delete=models.CASCADE, related_name='programs', null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return f"{self.code} - {self.name}"
-
-
-class Course(models.Model):
-    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name="courses")
-    title = models.CharField(max_length=255)
-    code = models.CharField(max_length=20, unique=True)
-    credits = models.IntegerField()
-    description = models.TextField(blank=True, null=True)
-
-    def __str__(self):
-        return f"{self.code} - {self.title}"
-
-
-class Subject(models.Model):
-    course = models.ForeignKey(Course, on_delete=models.CASCADE)
-    name = models.CharField(max_length=200)
-    subject_code = models.CharField(max_length=10, unique=True)
+    class Meta:
+        verbose_name = 'Program'
+        verbose_name_plural = 'Programs'
 
     def __str__(self):
         return self.name
 
 
 class Instructor(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
-
-    def __str__(self):
-        return self.user.full_name or str(self.user)
-
-
-class TeachingAssignment(models.Model):
-    instructor = models.ForeignKey(Instructor, on_delete=models.CASCADE)
-    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
-    semester = models.CharField(max_length=20)
-    academic_year = models.CharField(max_length=9)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='instructor_profile')
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, related_name='instructors')
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('instructor', 'subject', 'semester', 'academic_year')
+        verbose_name = 'Instructor'
+        verbose_name_plural = 'Instructors'
 
     def __str__(self):
-        return f"{self.instructor} -> {self.subject}"
+        return f"{self.user.login_id} - Instructor"
 
 
-class Timetable(models.Model):
-    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
-    day_of_week = models.CharField(max_length=10)
-    start_time = models.TimeField()
-    end_time = models.TimeField()
-    room = models.CharField(max_length=50)
-
-
-class Grade(models.Model):
-    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
-    grade = models.CharField(max_length=2)
-    semester = models.CharField(max_length=20)
-    academic_year = models.CharField(max_length=9)
+class Course(models.Model):
+    name = models.CharField(max_length=100, default="Unnamed Course")
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='courses', null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('student', 'subject', 'semester', 'academic_year')
+        verbose_name = 'Course'
+        verbose_name_plural = 'Courses'
+
+    def __str__(self):
+        return self.name
 
 
 class Student(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="student_profile")
-    admission_number = models.CharField(max_length=20, unique=True)
-    college = models.ForeignKey(College, on_delete=models.CASCADE, related_name="students")
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name="students")
-    programs = models.ManyToManyField(Program, blank=True, related_name="enrolled_students")
-    enrollment_date = models.DateField(default=timezone.now)
-    active = models.BooleanField(default=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='academic_student_profile')
+    student_id = models.CharField(max_length=20, unique=True)
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='students', null=True, blank=True)
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, related_name='students')
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Student'
+        verbose_name_plural = 'Students'
 
     def __str__(self):
-        return f"{self.user} ({self.admission_number})"
+        return f"{self.user.login_id} - {self.student_id}"
+
+
+class Subject(models.Model):
+    name = models.CharField(max_length=100)
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='subjects', null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Subject'
+        verbose_name_plural = 'Subjects'
+
+    def __str__(self):
+        return self.name
+
+
+class Timetable(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='timetables', null=True, blank=True)
+    day = models.CharField(max_length=10)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Timetable'
+        verbose_name_plural = 'Timetables'
+
+    def __str__(self):
+        return f"{self.course} - {self.day}"
+
+
+class Grade(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='grades', null=True, blank=True)
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='grades', null=True, blank=True)
+    score = models.FloatField(default=0.0)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Grade'
+        verbose_name_plural = 'Grades'
+
+    def __str__(self):
+        return f"{self.student} - {self.subject} - {self.score}"
+
+
+class TeachingAssignment(models.Model):
+    instructor = models.ForeignKey(Instructor, on_delete=models.CASCADE, related_name='assignments', null=True, blank=True)
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='assignments', null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Teaching Assignment'
+        verbose_name_plural = 'Teaching Assignments'
+
+    def __str__(self):
+        return f"{self.instructor} - {self.course}"

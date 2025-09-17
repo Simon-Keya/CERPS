@@ -1,11 +1,11 @@
-from rest_framework.routers import DefaultRouter
 from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import KPIViewSet, AuditLogViewSet, StudentPerformanceViewSet
 
 router = DefaultRouter()
-router.register(r'kpi', KPIViewSet, basename='kpi')
-router.register(r'audit', AuditLogViewSet, basename='audit')
-router.register(r'student-performance', StudentPerformanceViewSet, basename='student-performance')
+router.register(r'kpis', KPIViewSet)
+router.register(r'audit-logs', AuditLogViewSet)
+router.register(r'student-performances', StudentPerformanceViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

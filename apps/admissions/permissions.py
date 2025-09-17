@@ -1,33 +1,42 @@
+
+import logging
 from rest_framework import permissions
 
-ADMISSIONS_GROUPS = {"Admissions", "Registrar", "SuperAdmin"}  # you can adjust group names
+logger = logging.getLogger(__name__)
 
-def user_in_groups(user, group_names):
-    return user.is_authenticated and (user.is_superuser or user.groups.filter(name__in=group_names).exists())
-
+ADMISSIONS_GROUPS = {"Admissions", "Registrar", "SuperAdmin"}
 
 class IsAdmissionsStaff(permissions.BasePermission):
     """
-    Staff-only create/update/delete; read allowed to admissions staff;
-    applicants can see their own applications.
+    Allows access for users in Admissions, Registrar, or SuperAdmin groups, or superusers.
     """
-
     def has_permission(self, request, view):
-        if request.method in permissions.SAFE_METHODS:
-            # allow authenticated users to read; object-level filter will apply
-            return bool(request.user and request.user.is_authenticated)
-        # non-safe methods require admissions staff
-        return user_in_groups(request.user, ADMISSIONS_GROUPS)
+        logger.debug(f"Checking IsAdmissionsStaff for user: {request.user}")
+        is_staff = request.user.is_authenticated and (
+            request.user.is_superuser or
+            request.user.groups.filter(name__in=ADMISSIONS_GROUPS).exists()
+        )
+        logger.debug(f"IsAdmissionsStaff result: {is_staff}")
+        return is_staff
+
+class IsApplicantOrAdmissionsStaff(permissions.BasePermission):
+    """
+    Allows access for admissions staff or the applicant who owns the object.
+    """
+    def has_permission(self, request, view):
+        logger.debug(f"Checking has_permission for user: {request.user}, method: {request.method}, view: {view}")
+        is_authenticated = request.user and request.user.is_authenticated
+        logger.debug(f"Is authenticated: {is_authenticated}")
+        return is_authenticated
 
     def has_object_permission(self, request, view, obj):
-        # Admissions staff can do everything
-        if user_in_groups(request.user, ADMISSIONS_GROUPS):
+        logger.debug(f"Checking has_object_permission for user: {request.user}, obj: {obj}")
+        if request.user.is_superuser or request.user.groups.filter(name__in=ADMISSIONS_GROUPS).exists():
+            logger.debug("User is superuser or in staff groups")
             return True
-        # Applicants can only read their own objects
-        if request.method in permissions.SAFE_METHODS:
-            owner = getattr(obj, "applicant", None)
-            # for nested objects like documents/reviews, derive owner
-            if owner is None and hasattr(obj, "application"):
-                owner = getattr(obj.application, "applicant", None)
-            return owner == request.user
-        return False
+        owner = getattr(obj, "applicant", None)
+        if owner is None and hasattr(obj, "application"):
+            owner = getattr(obj.application, "applicant", None)
+        is_owner = owner == request.user
+        logger.debug(f"Is owner: {is_owner}, owner: {owner}")
+        return is_owner

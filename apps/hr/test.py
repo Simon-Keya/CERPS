@@ -14,13 +14,19 @@ class HRModelTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
             login_id='testuser',
-            username='testuser',
-            password='testpass123'
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            is_active=True
         )
         self.hr_user = User.objects.create_user(
             login_id='hruser',
-            username='hruser',
-            password='hrpass123'
+            password='hrpass123',
+            first_name='HR',
+            last_name='User',
+            is_staff=True,
+            is_hr=True,
+            is_active=True
         )
         self.hr_group = Group.objects.create(name='HR')
         self.hr_user.groups.add(self.hr_group)
@@ -64,8 +70,10 @@ class HRSerializerTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
             login_id='testuser',
-            username='testuser',
-            password='testpass123'
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            is_active=True
         )
         self.department = Department.objects.create(name='IT', description='IT Department')
         self.employee = Employee.objects.create(
@@ -97,7 +105,13 @@ class HRSerializerTests(TestCase):
         self.assertEqual(data['position'], 'Developer')
         self.assertEqual(data['user'], 'testuser')
 
-        new_user = User.objects.create_user(login_id='newuser', username='newuser', password='newpass123')
+        new_user = User.objects.create_user(
+            login_id='newuser',
+            password='newpass123',
+            first_name='New',
+            last_name='User',
+            is_active=True
+        )
         new_data = {
             'user_id': new_user.id,
             'department_id': self.department.id,
@@ -142,18 +156,26 @@ class HRViewTests(APITestCase):
         self.client = APIClient()
         self.user = User.objects.create_user(
             login_id='testuser',
-            username='testuser',
-            password='testpass123'
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            is_active=True
         )
         self.hr_user = User.objects.create_user(
             login_id='hruser',
-            username='hruser',
-            password='hrpass123'
+            password='hrpass123',
+            first_name='HR',
+            last_name='User',
+            is_staff=True,
+            is_hr=True,
+            is_active=True
         )
         self.superuser = User.objects.create_superuser(
             login_id='superuser',
-            username='superuser',
-            password='superpass123'
+            password='superpass123',
+            first_name='Super',
+            last_name='User',
+            is_active=True
         )
         self.hr_group = Group.objects.create(name='HR')
         self.hr_user.groups.add(self.hr_group)
@@ -206,7 +228,13 @@ class HRViewTests(APITestCase):
 
     def test_employee_create_hr_user(self):
         """Test HR user can create an employee."""
-        new_user = User.objects.create_user(login_id='newuser', username='newuser', password='newpass123')
+        new_user = User.objects.create_user(
+            login_id='newuser',
+            password='newpass123',
+            first_name='New',
+            last_name='User',
+            is_active=True
+        )
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.hr_user)}')
         data = {
             'user_id': new_user.id,
@@ -286,6 +314,7 @@ class HRViewTests(APITestCase):
             reason='Vacation',
             status='pending'
         )
+        self.assertTrue(LeaveRequest.objects.filter(id=leave.id).exists())  # Debug: Verify object exists
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.user)}')
         data = {'status': 'approved'}
         response = self.client.patch(f'/api/hr/leaverequests/{leave.id}/', data)

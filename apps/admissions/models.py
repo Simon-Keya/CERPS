@@ -1,27 +1,15 @@
-from django.db import models, transaction
+from django.db import models
 from django.conf import settings
 from django.utils import timezone
-from django.core.exceptions import ValidationError
-from django.contrib.postgres.fields import ArrayField, JSONField  # Django 5 supports JSONField directly
-
-# If you don't use Postgres, swap JSONField import for models.JSONField
-try:
-    from django.db.models import JSONField as DJJSONField
-except Exception:
-    DJJSONField = JSONField
-
-# External dependency on Academic app
-try:
-    from apps.academic.models import Program
-except Exception:
-    Program = None  # to avoid import errors at code-time; migrations/runtime should have it
+from django.core.validators import MinValueValidator
+from django.db.models import JSONField as DJJSONField
 
 
 class AcademicYear(models.Model):
     """
-    e.g., 2025/2026. Exactly one active at a time (recommended).
+    Represents an academic year (e.g., 2024/2025).
     """
-    year = models.CharField(max_length=9, unique=True)
+    year = models.CharField(max_length=20, unique=True)
     start_date = models.DateField()
     end_date = models.DateField()
     is_active = models.BooleanField(default=False)
@@ -29,116 +17,72 @@ class AcademicYear(models.Model):
     class Meta:
         ordering = ["-start_date"]
 
-    def clean(self):
-        if self.start_date >= self.end_date:
-            raise ValidationError("AcademicYear.start_date must be before end_date")
-
-    def __str__(self) -> str:
+    def __str__(self):
         return self.year
 
 
 class Intake(models.Model):
     """
-    Application window within an academic year (e.g., Jan Intake, Sep Intake).
+    Represents an intake/semester admission cycle within an academic year.
     """
-    academic_year = models.ForeignKey(AcademicYear, on_delete=models.CASCADE, related_name="intakes")
-    name = models.CharField(max_length=50)  # e.g., "September"
-    opens_at = models.DateTimeField()
-    closes_at = models.DateTimeField()
+    name = models.CharField(max_length=100)
+    academic_year = models.ForeignKey(
+        AcademicYear, on_delete=models.CASCADE, related_name="intakes"
+    )
+    opens_at = models.DateField()
+    closes_at = models.DateField()
     is_open = models.BooleanField(default=True)
 
     class Meta:
-        unique_together = [("academic_year", "name")]
+        unique_together = ("name", "academic_year")
         ordering = ["-opens_at"]
 
-    def clean(self):
-        if self.opens_at >= self.closes_at:
-            raise ValidationError("Intake.opens_at must be before closes_at")
-
     def __str__(self):
-        return f"{self.academic_year.year} - {self.name}"
+        return f"{self.name} - {self.academic_year.year}"
 
 
 class Application(models.Model):
     """
-    A single application to a Program during an Intake.
-    Each user/applicant can submit multiple applications across years/programs, but one per program/intake.
+    Student application for admission to a program in a given intake.
     """
-    class Status(models.TextChoices):
-        DRAFT = "draft", "Draft"
-        SUBMITTED = "submitted", "Submitted"
-        UNDER_REVIEW = "under_review", "Under Review"
-        OFFERED = "offered", "Offered"
-        ACCEPTED = "accepted", "Accepted"
-        DECLINED = "declined", "Declined"
-        REJECTED = "rejected", "Rejected"
-        ENROLLED = "enrolled", "Enrolled"
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("submitted", "Submitted"),
+        ("under_review", "Under Review"),
+        ("accepted", "Accepted"),
+        ("rejected", "Rejected"),
+        ("offer_made", "Offer Made"),
+        ("offer_accepted", "Offer Accepted"),
+        ("offer_declined", "Offer Declined"),
+    ]
 
-    applicant = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="applications")
-    academic_year = models.ForeignKey(AcademicYear, on_delete=models.PROTECT, related_name="applications")
-    intake = models.ForeignKey(Intake, on_delete=models.PROTECT, related_name="applications")
-    program = models.ForeignKey("academic.Program", on_delete=models.PROTECT, related_name="applications")
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
-    personal_data = DJJSONField(default=dict, blank=True)  # e.g., {bio, address, guardian, etc}
-    education_history = DJJSONField(default=list, blank=True)  # list of dicts
-    meta = DJJSONField(default=dict, blank=True)  # extra attributes
+    applicant = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="applications"
+    )
+    intake = models.ForeignKey(
+        Intake, on_delete=models.CASCADE, related_name="applications"
+    )
+    # Changed from CharField to ForeignKey
+    program = models.ForeignKey(
+        'academic.Program', on_delete=models.CASCADE, related_name="applications"
+    )
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="draft")
     submitted_at = models.DateTimeField(null=True, blank=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    decision_date = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = [("applicant", "intake", "program")]
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.id} - {self.applicant} - {self.program} ({self.status})"
-
-    def can_submit(self) -> bool:
-        now = timezone.now()
-        return self.status == self.Status.DRAFT and self.intake.opens_at <= now <= self.intake.closes_at and self.intake.is_open
-
-    def can_review(self) -> bool:
-        return self.status in {self.Status.SUBMITTED, self.Status.UNDER_REVIEW}
-
-    def can_offer(self) -> bool:
-        return self.status in {self.Status.SUBMITTED, self.Status.UNDER_REVIEW}
-
-    def can_accept_offer(self) -> bool:
-        return self.status == self.Status.OFFERED
-
-    def can_decline_offer(self) -> bool:
-        return self.status == self.Status.OFFERED
-
-    def can_enroll(self) -> bool:
-        return self.status == self.Status.ACCEPTED
-
-    @transaction.atomic
-    def submit(self):
-        if not self.can_submit():
-            raise ValidationError("Application cannot be submitted in its current state or intake is closed.")
-        # ensure required docs are present
-        missing = self.missing_required_documents()
-        if missing:
-            raise ValidationError(f"Missing required documents: {', '.join(missing)}")
-        self.status = self.Status.SUBMITTED
-        self.submitted_at = timezone.now()
-        self.save(update_fields=["status", "submitted_at", "updated_at"])
-
-    def required_documents(self):
-        """
-        You can expand this to fetch from Program config.
-        For now, enforce ID + Transcript.
-        """
-        return {"national_id", "transcript"}
-
-    def missing_required_documents(self):
-        provided = set(self.documents.values_list("doc_type", flat=True))
-        return [d for d in self.required_documents() if d not in provided]
+        return f"{self.applicant} - {self.program.name} ({self.intake})"
 
 
 class ApplicationDocument(models.Model):
     """
-    Stores metadata about uploaded docs. Actual file storage can be a FileField or external storage.
+    Stores metadata about uploaded documents for applications.
     """
     DOC_TYPES = [
         ("national_id", "National ID/Passport"),
@@ -147,14 +91,20 @@ class ApplicationDocument(models.Model):
         ("photo", "Passport Photo"),
         ("other", "Other"),
     ]
-    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name="documents")
+
+    application = models.ForeignKey(
+        Application, on_delete=models.CASCADE, related_name="documents"
+    )
     doc_type = models.CharField(max_length=32, choices=DOC_TYPES)
-    file = models.FileField(upload_to="admissions/docs/%Y/%m/")  # configure MEDIA
+    file = models.FileField(upload_to="admissions/docs/%Y/%m/")
     meta = DJJSONField(default=dict, blank=True)
-    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = [("application", "doc_type")]  # 1 type each, adjust if multiples allowed
+        unique_together = [("application", "doc_type")]
+        ordering = ["-created_at"]
 
     def __str__(self):
         return f"{self.application_id} - {self.doc_type}"
@@ -162,79 +112,101 @@ class ApplicationDocument(models.Model):
 
 class ApplicationReview(models.Model):
     """
-    Staff review with rubric scoring.
+    Represents a review of an application by an admissions officer/staff.
     """
-    DECISIONS = [
-        ("pending", "Pending"),
-        ("recommend_offer", "Recommend Offer"),
-        ("recommend_reject", "Recommend Reject"),
+    DECISION_CHOICES = [
+        ("accept", "Accept"),
+        ("reject", "Reject"),
+        ("waitlist", "Waitlist"),
     ]
-    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name="reviews")
-    reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
-    score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    application = models.ForeignKey(
+        Application, on_delete=models.CASCADE, related_name="reviews"
+    )
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="application_reviews",
+    )
+    decision = models.CharField(max_length=32, choices=DECISION_CHOICES)
+    score = models.PositiveIntegerField(
+        validators=[MinValueValidator(0)], null=True, blank=True
+    )
     comments = models.TextField(blank=True)
-    decision = models.CharField(max_length=20, choices=DECISIONS, default="pending")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        unique_together = ("application", "reviewer")
         ordering = ["-created_at"]
 
-
-class Offer(models.Model):
-    """
-    An offer issued to the applicant. Accept/Decline drives Application status.
-    """
-    application = models.OneToOneField(Application, on_delete=models.CASCADE, related_name="offer")
-    issued_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
-    amount_cents = models.PositiveIntegerField(default=0)  # deposit/commitment fee if any
-    expires_at = models.DateTimeField()
-    issued_at = models.DateTimeField(auto_now_add=True)
-    accepted_at = models.DateTimeField(null=True, blank=True)
-    declined_at = models.DateTimeField(null=True, blank=True)
-    meta = DJJSONField(default=dict, blank=True)
-
-    def is_expired(self):
-        return timezone.now() > self.expires_at
-
-    @transaction.atomic
-    def accept(self, by_user):
-        if self.is_expired():
-            raise ValidationError("Offer has expired.")
-        if self.application.status != Application.Status.OFFERED:
-            raise ValidationError("Application is not in OFFERED status.")
-        self.accepted_at = timezone.now()
-        self.save(update_fields=["accepted_at"])
-        self.application.status = Application.Status.ACCEPTED
-        self.application.save(update_fields=["status", "updated_at"])
-
-    @transaction.atomic
-    def decline(self, by_user):
-        if self.application.status != Application.Status.OFFERED:
-            raise ValidationError("Application is not in OFFERED status.")
-        self.declined_at = timezone.now()
-        self.save(update_fields=["declined_at"])
-        self.application.status = Application.Status.DECLINED
-        self.application.save(update_fields=["status", "updated_at"])
+    def __str__(self):
+        return f"Review for {self.application} by {self.reviewer}"
 
 
 class AdmissionDecision(models.Model):
     """
-    Records a final decision (accept/reject) and reason. (Separate from Offer for auditability.)
+    Final decision made on an application (consolidated after reviews).
     """
-    application = models.OneToOneField(Application, on_delete=models.CASCADE, related_name="decision")
-    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
-    decision = models.CharField(max_length=20, choices=[("accept", "Accept"), ("reject", "Reject")])
-    reason = models.TextField(blank=True)
+    DECISION_CHOICES = [
+        ("accept", "Accept"),
+        ("reject", "Reject"),
+        ("waitlist", "Waitlist"),
+    ]
+
+    application = models.OneToOneField(
+        Application, on_delete=models.CASCADE, related_name="final_decision"
+    )
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="decisions_made",
+    )
+    decision = models.CharField(max_length=32, choices=DECISION_CHOICES)
+    remarks = models.TextField(blank=True)
     decided_at = models.DateTimeField(auto_now_add=True)
 
-    def apply(self):
-        """
-        Apply final decision to the application if not already reflected.
-        """
-        if self.decision == "accept" and self.application.status not in (
-            Application.Status.ACCEPTED, Application.Status.ENROLLED
-        ):
-            self.application.status = Application.Status.ACCEPTED
-        elif self.decision == "reject":
-            self.application.status = Application.Status.REJECTED
-        self.application.save(update_fields=["status", "updated_at"])
+    def __str__(self):
+        return f"{self.application} - {self.decision}"
+
+
+class Offer(models.Model):
+    """
+    Represents an admission offer made to a student after acceptance.
+    """
+    OFFER_STATUS = [
+        ("pending", "Pending"),
+        ("accepted", "Accepted"),
+        ("declined", "Declined"),
+        ("expired", "Expired"),
+    ]
+
+    application = models.OneToOneField(
+        Application, on_delete=models.CASCADE, related_name="offer"
+    )
+    offered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="offers_made",
+    )
+    amount_cents = models.PositiveIntegerField(default=0)
+    expires_at = models.DateField()
+    issued_at = models.DateTimeField(auto_now_add=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    declined_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def status(self):
+        if self.accepted_at:
+            return "accepted"
+        elif self.declined_at:
+            return "declined"
+        elif self.expires_at < timezone.now().date():
+            return "expired"
+        else:
+            return "pending"
+
+    def __str__(self):
+        return f"Offer for {self.application} - {self.status}"

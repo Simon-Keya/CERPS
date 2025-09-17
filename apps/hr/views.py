@@ -1,61 +1,35 @@
-from rest_framework import viewsets, filters
-from django_filters.rest_framework import DjangoFilterBackend
-from apps.core.utils import log_action
-from .models import Department, Employee, LeaveRequest
-from .serializers import DepartmentSerializer, EmployeeSerializer, LeaveRequestSerializer
-from .permissions import IsHRStaffOrReadOnly, IsHREmployeeOrHRStaff
+from rest_framework import viewsets
+from apps.hr.models import Department, Employee, LeaveRequest
+from apps.hr.serializers import DepartmentSerializer, EmployeeSerializer, LeaveRequestSerializer
+from apps.hr.permissions import IsHRStaffOrReadOnly, IsHREmployeeOrHRStaff
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
     permission_classes = [IsHRStaffOrReadOnly]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name']
-    ordering = ['name']
-
-    def perform_create(self, serializer):
-        instance = serializer.save()
-        log_action(self.request.user, 'created_department', {'department_id': instance.id})
-
-    def perform_update(self, serializer):
-        instance = serializer.save()
-        log_action(self.request.user, 'updated_department', {'department_id': instance.id})
 
 class EmployeeViewSet(viewsets.ModelViewSet):
-    queryset = Employee.objects.select_related('user', 'department').all()
+    queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
     permission_classes = [IsHRStaffOrReadOnly]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['department']
-    search_fields = ['user__login_id', 'employee_id', 'position']
-    ordering = ['-created_at']
-
-    def perform_create(self, serializer):
-        instance = serializer.save()
-        log_action(self.request.user, 'created_employee', {'employee_id': instance.id})
-
-    def perform_update(self, serializer):
-        instance = serializer.save()
-        log_action(self.request.user, 'updated_employee', {'employee_id': instance.id})
 
 class LeaveRequestViewSet(viewsets.ModelViewSet):
-    queryset = LeaveRequest.objects.select_related('employee__user').all()
+    queryset = LeaveRequest.objects.all()
     serializer_class = LeaveRequestSerializer
     permission_classes = [IsHREmployeeOrHRStaff]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['status', 'employee']
-    ordering = ['-created_at']
+    lookup_field = 'id'
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff or user.groups.filter(name__in=['HR', 'SuperAdmin']).exists():
-            return self.queryset
-        return self.queryset.filter(employee__user=user)
-
-    def perform_create(self, serializer):
-        instance = serializer.save()
-        log_action(self.request.user, 'created_leave_request', {'leave_request_id': instance.id})
-
-    def perform_update(self, serializer):
-        instance = serializer.save()
-        log_action(self.request.user, 'updated_leave_request', {'leave_request_id': instance.id})
+        logger.debug(f"User: {user}, Action: {self.action}, Authenticated: {user.is_authenticated}")
+        if self.action in ['list']:
+            if user.is_authenticated and (user.is_staff or user.is_hr or user.groups.filter(name__in=['HR', 'SuperAdmin']).exists()):
+                logger.debug("Returning all leave requests for HR user")
+                return LeaveRequest.objects.all()
+            logger.debug(f"Returning leave requests for user: {user}")
+            return LeaveRequest.objects.filter(employee__user=user)
+        logger.debug("Returning all leave requests for object-level actions")
+        return LeaveRequest.objects.all()
