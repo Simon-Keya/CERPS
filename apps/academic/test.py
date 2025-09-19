@@ -1,342 +1,186 @@
+import factory
 from django.test import TestCase
 from django.urls import reverse
-from rest_framework.test import APITestCase, APIClient
+from rest_framework.test import APIClient
 from rest_framework import status
 from django.utils import timezone
-from django.contrib.auth.models import Group
 from apps.users.models import User
-from apps.hr.models import Department, Employee, LeaveRequest
-from apps.hr.serializers import DepartmentSerializer, EmployeeSerializer, LeaveRequestSerializer
-from rest_framework_simplejwt.tokens import RefreshToken
-from datetime import date
-import logging
+from apps.hr.models import Department
+from apps.core.models import College
+from apps.academic.models import AcademicYear, Program, Instructor, Course, Student, Subject, Timetable, Grade, TeachingAssignment
+from datetime import date # Import the date class
 
-logger = logging.getLogger(__name__)
+# Factory Definitions for Academic Models
+class UserFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = User
+    
+    login_id = factory.Sequence(lambda n: f'testuser{n}')
+    email = factory.Sequence(lambda n: f'testuser{n}@example.com')
+    password = factory.PostGenerationMethodCall('set_password', 'testpass123')
+    is_active = True
 
-class HRModelTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            login_id='testuser',
-            password='testpass123',
-            first_name='Test',
-            last_name='User',
-            is_active=True
-        )
-        self.hr_user = User.objects.create_user(
-            login_id='hruser',
-            password='hrpass123',
-            first_name='HR',
-            last_name='User',
-            is_staff=True,
-            is_hr=True,
-            is_active=True
-        )
-        self.hr_group = Group.objects.create(name='HR')
-        self.hr_user.groups.add(self.hr_group)
-        self.department = Department.objects.create(name='IT', description='IT Department')
-        self.employee = Employee.objects.create(
-            user=self.user,
-            department=self.department,
-            employee_id='EMP001',
-            position='Developer',
-            hire_date=date(2025, 1, 1),
-            phone_number='1234567890'
-        )
+class DepartmentFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Department
+    name = factory.Sequence(lambda n: f'Department {n}')
 
-    def test_department_creation(self):
-        """Test Department model creation and string representation."""
-        dept = Department.objects.create(name='Finance', description='Finance Department')
-        self.assertEqual(str(dept), 'Finance')
-        self.assertTrue(dept.created_at)
-        self.assertTrue(dept.updated_at)
+class CollegeFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = College
+    name = factory.Sequence(lambda n: f'College {n}')
 
-    def test_employee_creation(self):
-        """Test Employee model creation and string representation."""
-        self.assertEqual(str(self.employee), 'testuser - Developer')
-        self.assertEqual(self.employee.user, self.user)
-        self.assertEqual(self.employee.department, self.department)
+class AcademicYearFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = AcademicYear
+    name = factory.Sequence(lambda n: f'202{n}/202{n+1}')
+    start_date = factory.LazyFunction(timezone.now().date)
+    end_date = factory.LazyFunction(lambda: timezone.now().date() + timezone.timedelta(days=365))
 
-    def test_leave_request_creation(self):
-        """Test LeaveRequest model creation and string representation."""
-        leave = LeaveRequest.objects.create(
-            employee=self.employee,
-            start_date=date(2025, 9, 1),
-            end_date=date(2025, 9, 5),
-            reason='Vacation',
-            status='pending'
-        )
-        self.assertEqual(str(leave), f'Leave Request for {self.employee} - pending')
-        self.assertEqual(leave.employee, self.employee)
-        self.assertEqual(leave.status, 'pending')
+class ProgramFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Program
+    name = factory.Sequence(lambda n: f'Program {n}')
+    department = factory.SubFactory(DepartmentFactory)
+    college = factory.SubFactory(CollegeFactory)
 
-class HRSerializerTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            login_id='testuser',
-            password='testpass123',
-            first_name='Test',
-            last_name='User',
-            is_active=True
-        )
-        self.department = Department.objects.create(name='IT', description='IT Department')
-        self.employee = Employee.objects.create(
-            user=self.user,
-            department=self.department,
-            employee_id='EMP001',
-            position='Developer',
-            hire_date=date(2025, 1, 1)
-        )
+class InstructorFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Instructor
+    user = factory.SubFactory(UserFactory)
+    department = factory.SubFactory(DepartmentFactory)
 
-    def test_department_serializer(self):
-        """Test DepartmentSerializer serialization and deserialization."""
-        serializer = DepartmentSerializer(self.department)
-        data = serializer.data
-        self.assertEqual(data['name'], 'IT')
-        self.assertEqual(data['description'], 'IT Department')
+class CourseFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Course
+    name = factory.Sequence(lambda n: f'Course {n}')
+    program = factory.SubFactory(ProgramFactory)
 
-        new_data = {'name': 'HR', 'description': 'Human Resources'}
-        serializer = DepartmentSerializer(data=new_data)
-        self.assertTrue(serializer.is_valid())
-        dept = serializer.save()
-        self.assertEqual(dept.name, 'HR')
+class StudentFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Student
+    user = factory.SubFactory(UserFactory)
+    admission_number = factory.Sequence(lambda n: f'ADM-{n:04d}')
+    program = factory.SubFactory(ProgramFactory)
+    department = factory.SubFactory(DepartmentFactory)
 
-    def test_employee_serializer(self):
-        """Test EmployeeSerializer serialization and deserialization."""
-        serializer = EmployeeSerializer(self.employee)
-        data = serializer.data
-        self.assertEqual(data['employee_id'], 'EMP001')
-        self.assertEqual(data['position'], 'Developer')
-        self.assertEqual(data['user'], 'testuser')
+class SubjectFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Subject
+    name = factory.Sequence(lambda n: f'Subject {n}')
+    course = factory.SubFactory(CourseFactory)
 
-        new_user = User.objects.create_user(
-            login_id='newuser',
-            password='newpass123',
-            first_name='New',
-            last_name='User',
-            is_active=True
-        )
-        new_data = {
-            'user_id': new_user.id,
-            'department_id': self.department.id,
-            'employee_id': 'EMP002',
-            'position': 'Manager',
-            'hire_date': '2025-02-01',
-            'phone_number': '0987654321'
-        }
-        serializer = EmployeeSerializer(data=new_data)
-        self.assertTrue(serializer.is_valid())
-        emp = serializer.save()
-        self.assertEqual(emp.employee_id, 'EMP002')
+class TimetableFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Timetable
+    course = factory.SubFactory(CourseFactory)
+    day = 'Monday'
+    start_time = timezone.now().time()
+    end_time = factory.LazyFunction(lambda: (timezone.now() + timezone.timedelta(hours=2)).time())
 
-    def test_leave_request_serializer(self):
-        """Test LeaveRequestSerializer serialization and deserialization."""
-        leave = LeaveRequest.objects.create(
-            employee=self.employee,
-            start_date=date(2025, 9, 1),
-            end_date=date(2025, 9, 5),
-            reason='Vacation',
-            status='pending'
-        )
-        serializer = LeaveRequestSerializer(leave)
-        data = serializer.data
-        self.assertEqual(data['reason'], 'Vacation')
-        self.assertEqual(data['status'], 'pending')
+class GradeFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Grade
+    student = factory.SubFactory(StudentFactory)
+    subject = factory.SubFactory(SubjectFactory)
+    score = factory.Faker('pyfloat', left_digits=2, right_digits=2, positive=True, min_value=0, max_value=100)
 
-        new_data = {
-            'employee_id': self.employee.id,
-            'start_date': '2025-10-01',
-            'end_date': '2025-10-03',
-            'reason': 'Sick Leave',
-            'status': 'pending'
-        }
-        serializer = LeaveRequestSerializer(data=new_data)
-        self.assertTrue(serializer.is_valid())
-        leave = serializer.save()
-        self.assertEqual(leave.reason, 'Sick Leave')
+class TeachingAssignmentFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = TeachingAssignment
+    instructor = factory.SubFactory(InstructorFactory)
+    course = factory.SubFactory(CourseFactory)
 
-class HRViewTests(APITestCase):
+
+# API Tests for Academic App
+class AcademicAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(
-            login_id='testuser',
-            password='testpass123',
-            first_name='Test',
-            last_name='User',
-            is_active=True
-        )
-        self.hr_user = User.objects.create_user(
-            login_id='hruser',
-            password='hrpass123',
-            first_name='HR',
-            last_name='User',
-            is_staff=True,
-            is_hr=True,
-            is_active=True
-        )
-        self.superuser = User.objects.create_superuser(
-            login_id='superuser',
-            password='superpass123',
-            first_name='Super',
-            last_name='User',
-            is_active=True
-        )
-        self.hr_group = Group.objects.create(name='HR')
-        self.hr_user.groups.add(self.hr_group)
-        self.department = Department.objects.create(name='IT')
-        self.employee = Employee.objects.create(
-            user=self.user,
-            department=self.department,
-            employee_id='EMP001',
-            position='Developer',
-            hire_date=date(2025, 1, 1)
-        )
-        self.hr_employee = Employee.objects.create(
-            user=self.hr_user,
-            department=self.department,
-            employee_id='EMP002',
-            position='HR Manager',
-            hire_date=date(2025, 1, 1)
-        )
+        # Authenticate with a staff user to pass permission checks
+        self.staff_user = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_authenticate(user=self.staff_user)
 
-    def get_token(self, user):
-        refresh = RefreshToken.for_user(user)
-        return str(refresh.access_token)
+        # Pre-create related objects for tests
+        self.academic_year = AcademicYearFactory()
+        self.department = DepartmentFactory()
+        self.college = CollegeFactory()
+        self.program = ProgramFactory(department=self.department, college=self.college)
+        self.instructor = InstructorFactory(department=self.department)
+        self.course = CourseFactory(program=self.program)
+        self.student = StudentFactory(program=self.program, department=self.department)
+        self.subject = SubjectFactory(course=self.course)
 
-    def test_department_list_unauthenticated(self):
-        """Test department list is accessible without authentication."""
-        response = self.client.get('/api/hr/departments/')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_department_create_hr_user(self):
-        """Test HR user can create a department."""
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.hr_user)}')
-        data = {'name': 'Finance', 'description': 'Finance Department'}
-        response = self.client.post('/api/hr/departments/', data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Department.objects.count(), 2)
-
-    def test_department_create_non_hr_user(self):
-        """Test non-HR user cannot create a department."""
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.user)}')
-        data = {'name': 'Finance', 'description': 'Finance Department'}
-        response = self.client.post('/api/hr/departments/', data)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_employee_list_authenticated(self):
-        """Test authenticated user can list employees."""
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.user)}')
-        response = self.client.get('/api/hr/employees/')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
-
-    def test_employee_create_hr_user(self):
-        """Test HR user can create an employee."""
-        new_user = User.objects.create_user(
-            login_id='newuser',
-            password='newpass123',
-            first_name='New',
-            last_name='User',
-            is_active=True
-        )
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.hr_user)}')
+    def test_create_academic_year(self):
+        url = reverse('academicyear-list')
         data = {
-            'user_id': new_user.id,
-            'department_id': self.department.id,
-            'employee_id': 'EMP003',
-            'position': 'Analyst',
-            'hire_date': '2025-02-01',
-            'phone_number': '1234567890'
+            'name': '2025/2026', 
+            'start_date': date(2025, 9, 1), 
+            'end_date': date(2026, 8, 31)
         }
-        response = self.client.post('/api/hr/employees/', data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Employee.objects.count(), 3)
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(AcademicYear.objects.count(), 2)
 
-    def test_leave_request_create_employee(self):
-        """Test employee can create their own leave request."""
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.user)}')
+    def test_create_program(self):
+        url = reverse('program-list')
+        data = {'name': 'New Program', 'department': self.department.id, 'college': self.college.id}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Program.objects.count(), 2)
+        self.assertEqual(response.data['name'], 'New Program')
+
+    def test_create_instructor(self):
+        url = reverse('instructor-list')
+        user = UserFactory.create()
+        data = {'user': user.id, 'department': self.department.id}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Instructor.objects.count(), 2)
+
+    def test_create_course(self):
+        url = reverse('course-list')
+        data = {'name': 'New Course', 'program': self.program.id}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Course.objects.count(), 2)
+
+    def test_create_student(self):
+        url = reverse('student-list')
+        user = UserFactory.create()
         data = {
-            'employee_id': self.employee.id,
-            'start_date': '2025-09-01',
-            'end_date': '2025-09-05',
-            'reason': 'Vacation',
-            'status': 'pending'
+            'user': user.id,
+            'admission_number': 'ADM-9999',
+            'program': self.program.id,
+            'department': self.department.id,
         }
-        response = self.client.post('/api/hr/leaverequests/', data)
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(Student.objects.count(), 2)
+
+    def test_create_subject(self):
+        url = reverse('subject-list')
+        data = {'name': 'New Subject', 'course': self.course.id}
+        response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(LeaveRequest.objects.count(), 1)
+        self.assertEqual(Subject.objects.count(), 2)
 
-    def test_leave_request_list_non_hr_employee(self):
-        """Test non-HR employee only sees their own leave requests."""
-        LeaveRequest.objects.create(
-            employee=self.employee,
-            start_date=date(2025, 9, 1),
-            end_date=date(2025, 9, 5),
-            reason='Vacation',
-            status='pending'
-        )
-        LeaveRequest.objects.create(
-            employee=self.hr_employee,
-            start_date=date(2025, 9, 10),
-            end_date=date(2025, 9, 12),
-            reason='Sick Leave',
-            status='pending'
-        )
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.user)}')
-        response = self.client.get('/api/hr/leaverequests/')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]['employee'], str(self.employee))
+    def test_create_timetable(self):
+        url = reverse('timetable-list')
+        data = {'course': self.course.id, 'day': 'Friday', 'start_time': '09:00:00', 'end_time': '11:00:00'}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Timetable.objects.count(), 1)
 
-    def test_leave_request_list_hr_user(self):
-        """Test HR user sees all leave requests."""
-        LeaveRequest.objects.create(
-            employee=self.employee,
-            start_date=date(2025, 9, 1),
-            end_date=date(2025, 9, 5),
-            reason='Vacation',
-            status='pending'
-        )
-        LeaveRequest.objects.create(
-            employee=self.hr_employee,
-            start_date=date(2025, 9, 10),
-            end_date=date(2025, 9, 12),
-            reason='Sick Leave',
-            status='pending'
-        )
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.hr_user)}')
-        response = self.client.get('/api/hr/leaverequests/')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+    def test_create_grade(self):
+        url = reverse('grade-list')
+        data = {'student': self.student.id, 'subject': self.subject.id, 'score': 95.5}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Grade.objects.count(), 1)
 
-    def test_leave_request_update_non_owner(self):
-        """Test non-owner employee cannot update another's leave request."""
-        leave = LeaveRequest.objects.create(
-            employee=self.hr_employee,
-            start_date=date(2025, 9, 1),
-            end_date=date(2025, 9, 5),
-            reason='Vacation',
-            status='pending'
-        )
-        self.assertTrue(LeaveRequest.objects.filter(id=leave.id).exists())  # Debug: Verify object exists
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.user)}')
-        data = {'status': 'approved'}
-        logger.debug(f"Testing PATCH to /api/hr/leaverequests/{leave.id}/ for user: {self.user}")
-        response = self.client.patch(f'/api/hr/leaverequests/{leave.id}/', data)
-        logger.debug(f"Response status: {response.status_code}, content: {response.content}")
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_leave_request_update_hr_user(self):
-        """Test HR user can update any leave request."""
-        leave = LeaveRequest.objects.create(
-            employee=self.employee,
-            start_date=date(2025, 9, 1),
-            end_date=date(2025, 9, 5),
-            reason='Vacation',
-            status='pending'
-        )
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.get_token(self.hr_user)}')
-        data = {'status': 'approved'}
-        response = self.client.patch(f'/api/hr/leaverequests/{leave.id}/', data)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        leave.refresh_from_db()
-        self.assertEqual(leave.status, 'approved')
+    def test_create_teaching_assignment(self):
+        url = reverse('teachingassignment-list')
+        data = {'instructor': self.instructor.id, 'course': self.course.id}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(TeachingAssignment.objects.count(), 1)

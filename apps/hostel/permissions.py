@@ -1,10 +1,19 @@
-from rest_framework.permissions import BasePermission
+from rest_framework import permissions
 
-class IsHostelStaffOrReadOnly(BasePermission):
-    """
-    Only staff can manage hostel data, students can view their own info.
-    """
+class IsHostelAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
-        if request.method in ['GET', 'HEAD', 'OPTIONS']:
-            return request.user.is_authenticated
-        return request.user.is_staff or getattr(request.user, 'is_hostel_staff', False)
+        return request.user.is_authenticated and (
+            request.user.is_superuser or
+            request.user.groups.filter(name__in=['HostelAdmin', 'SuperAdmin']).exists()
+        )
+
+class IsStudentOrHostelAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated
+
+    def has_object_permission(self, request, view, obj):
+        return (
+            hasattr(obj, 'student') and obj.student.user == request.user or
+            request.user.is_superuser or
+            request.user.groups.filter(name__in=['HostelAdmin', 'SuperAdmin']).exists()
+        )

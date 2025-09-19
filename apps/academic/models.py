@@ -68,7 +68,7 @@ class Course(models.Model):
 
 class Student(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='academic_student_profile')
-    student_id = models.CharField(max_length=20, unique=True)
+    admission_number = models.CharField(max_length=20, unique=True)
     program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='students', null=True, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, related_name='students')
     created_at = models.DateTimeField(default=timezone.now)
@@ -79,7 +79,7 @@ class Student(models.Model):
         verbose_name_plural = 'Students'
 
     def __str__(self):
-        return f"{self.user.login_id} - {self.student_id}"
+        return f"{self.user.login_id} - {self.admission_number}"
 
 
 class Subject(models.Model):

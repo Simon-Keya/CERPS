@@ -1,14 +1,24 @@
 import logging
 from rest_framework import viewsets, permissions, filters
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Program, Instructor, Course, Student, Subject, Timetable, Grade, TeachingAssignment
-from apps.admissions.models import AcademicYear, Intake, Application, ApplicationDocument, ApplicationReview, Offer, AdmissionDecision
+from .models import Program, Instructor, Course, Student, Subject, Timetable, Grade, TeachingAssignment, AcademicYear
+from apps.admissions.models import Intake, Application, ApplicationDocument, ApplicationReview, Offer, AdmissionDecision
 from .serializers import (
     ProgramSerializer, InstructorSerializer, CourseSerializer, StudentSerializer,
-    SubjectSerializer, TimetableSerializer, GradeSerializer, TeachingAssignmentSerializer
+    SubjectSerializer, TimetableSerializer, GradeSerializer, TeachingAssignmentSerializer, AcademicYearSerializer
 )
 
 logger = logging.getLogger(__name__)
+
+# New ViewSet for AcademicYear
+class AcademicYearViewSet(viewsets.ModelViewSet):
+    queryset = AcademicYear.objects.all()
+    serializer_class = AcademicYearSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["is_current"]
+    search_fields = ["name"]
+    ordering = ["-start_date"]
 
 class ProgramViewSet(viewsets.ModelViewSet):
     queryset = Program.objects.select_related("department", "college").all()
@@ -43,7 +53,7 @@ class StudentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["program", "department"]
-    search_fields = ["user__login_id", "student_id"]
+    search_fields = ["user__login_id", "admission_number"]
     ordering = ["-created_at"]
 
 class SubjectViewSet(viewsets.ModelViewSet):
@@ -70,7 +80,7 @@ class GradeViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["student", "subject"]
-    search_fields = ["student__student_id", "subject__name"]
+    search_fields = ["student__admission_number", "subject__name"]
     ordering = ["-created_at"]
 
 class TeachingAssignmentViewSet(viewsets.ModelViewSet):

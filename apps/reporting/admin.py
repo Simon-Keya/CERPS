@@ -3,8 +3,8 @@ from .models import KPI, AuditLog, StudentPerformance
 
 @admin.register(KPI)
 class KPIAdmin(admin.ModelAdmin):
-    list_display = ['name', 'value', 'created_at', 'updated_at']
-    search_fields = ['name']
+    list_display = ['metric', 'value', 'created_at', 'updated_at']
+    search_fields = ['metric']
 
 @admin.register(AuditLog)
 class AuditLogAdmin(admin.ModelAdmin):
@@ -14,6 +14,6 @@ class AuditLogAdmin(admin.ModelAdmin):
 
 @admin.register(StudentPerformance)
 class StudentPerformanceAdmin(admin.ModelAdmin):
-    list_display = ['student', 'course', 'grade', 'attendance_percentage', 'updated_at']
-    search_fields = ['student__first_name', 'student__last_name', 'course__name']
+    list_display = ['student', 'course', 'grade', 'attendance_percentage', 'score', 'updated_at']
+    search_fields = ['student__user__login_id', 'course__name']
     list_filter = ['course']
