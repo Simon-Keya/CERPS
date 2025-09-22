@@ -1,2 +1,5 @@
-# apps/academic/__init__.py
-default_app_config = 'apps.academic.apps.AcademicConfig'
+from django.apps import AppConfig
+
+class AcademicConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'apps.academic'

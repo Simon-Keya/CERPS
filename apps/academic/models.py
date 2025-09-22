@@ -7,7 +7,7 @@ from apps.core.models import College
 
 class AcademicYear(models.Model):
     """Represents an academic year, e.g. 2024/2025."""
-    name = models.CharField(max_length=20, unique=True)  # Example: "2024/2025"
+    name = models.CharField(max_length=20, unique=True) 
     start_date = models.DateField()
     end_date = models.DateField()
     is_current = models.BooleanField(default=False)
